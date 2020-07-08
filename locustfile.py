@@ -1,14 +1,11 @@
-from locust import HttpLocust, TaskSet, task
+from locust import HttpUser, task
 
 
-class UserBehavior(TaskSet):
-    @task
-    def predict(self):
-        with open('jemma.png', 'rb') as image:
-            self.client.post('/predict', files={'img_file': image})
-
-
-class WebsiteUser(HttpLocust):
-    task_set = UserBehavior
+class MyUser(HttpUser):
     min_wait = 500
     max_wait = 5000
+
+    @task
+    def predict(self):
+        with open('img/goldfish.jpg', 'rb') as image:
+            self.client.post('/predict', files={'img_file': image})
