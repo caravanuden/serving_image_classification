@@ -27,17 +27,16 @@ CLIENT_MAX_TRIES = int(os.environ.get("CLIENT_MAX_TRIES"))
 
 
 def prepare_image(image, target):
-    # If the image mode is not RGB, convert it
+    # need image in RGB
     if image.mode != "RGB":
         image = image.convert("RGB")
 
-    # Resize the input image and preprocess it
+    # preprocess image
     image = image.resize(target)
     image = img_to_array(image)
     image = np.expand_dims(image, axis=0)
     image = imagenet_utils.preprocess_input(image)
 
-    # Return the processed image
     return image
 
 
@@ -57,37 +56,34 @@ def predict(request: Request, img_file: bytes=File(...)):
                                int(os.environ.get("IMAGE_HEIGHT")))
                               )
 
-        # Ensure our NumPy array is C-contiguous as well, otherwise we won't be able to serialize it
+        # ensure NumPy array is C-contiguous, to serialize it later
         image = image.copy(order="C")
 
-        # Generate an ID for the classification then add the classification ID + image to the queue
+        # add the UUID and image to the q
         k = str(uuid.uuid4())
         image = base64.b64encode(image).decode("utf-8")
         d = {"id": k, "image": image}
         db.rpush(os.environ.get("IMAGE_QUEUE"), json.dumps(d))
 
-        # Keep looping for CLIENT_MAX_TRIES times
+        # keep looping for CLIENT_MAX_TRIES times
         num_tries = 0
         while num_tries < CLIENT_MAX_TRIES:
             num_tries += 1
 
-            # Attempt to grab the output predictions
             output = db.get(k)
 
-            # Check to see if our model has classified the input image
+            # check to see if our model has classified the input image
             if output is not None:
-                # Add the output predictions to our data dictionary so we can return it to the client
                 output = output.decode("utf-8")
                 data["predictions"] = json.loads(output)
 
-                # Delete the result from the database and break from the polling loop
+                # delete the result from the db and break from the polling loop
                 db.delete(k)
                 break
 
-            # Sleep for a small amount to give the model a chance to classify the input image
+            # sleep to give the model a chance to classify the input image
             time.sleep(float(os.environ.get("CLIENT_SLEEP")))
 
-            # Indicate that the request was a success
             data["success"] = True
         else:
             raise HTTPException(status_code=400, detail="Request failed after {} tries".format(CLIENT_MAX_TRIES))
